@@ -1,25 +1,20 @@
-import copy
-import random
-
 import numpy as np
 import torch
 import torch.cuda.amp as amp
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
-from PIL import ImageOps, ImageSequence
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from ..flashface.all_finetune.config import cfg
-from ..flashface.all_finetune.utils import Compose, PadToSquare, seed_everything, get_padding
-from ..ldm.models.retinaface import crop_face, retinaface
-
-import comfy.samplers
+from ..flashface.all_finetune.utils import Compose, PadToSquare, seed_everything
+from ..ldm.models.retinaface import retinaface
 
 padding_to_square = PadToSquare(224)
 
 retinaface_transforms = T.Compose([PadToSquare(size=640), T.ToTensor()])
 
 retinaface = retinaface(pretrained=True, device='cuda').eval().requires_grad_(False)
+
 
 class FlashFaceGenerator:
     @classmethod
@@ -32,7 +27,7 @@ class FlashFaceGenerator:
                 "reference_faces": ("PIL_IMAGE", {}),
                 "vae": ("VAE", {}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647}),
-                "sampler": (['ddim', 'euler',], ),
+                "sampler": (['ddim', 'euler', ],),
                 "steps": ("INT", {"default": 35}),
                 "text_guidance_strength": ("FLOAT", {"default": 7.5, "min": 0.0, "max": 10.0, "step": 0.1}),
                 "reference_feature_strength": ("FLOAT", {"default": 1.2, "min": 0.7, "max": 1.4, "step": 0.05}),
@@ -45,31 +40,35 @@ class FlashFaceGenerator:
                 "height": ("INT", {"default": 768, "min": 8, "max": 16000}),
                 "width": ("INT", {"default": 768, "min": 8, "max": 16000}),
                 "num_samples": ("INT", {"default": 1}),
-            },
-            "optional": {
-                "mask": ("MASK", {}),  # Make mask an optional input type
             }
         }
 
-    RETURN_TYPES = ("MODEL", "IMAGE")  # Return the model and the image
+    RETURN_TYPES = ("IMAGE",)
     FUNCTION = "generate"
     CATEGORY = "FlashFace"
 
     def generate(self, model, positive, negative, reference_faces, vae, seed, sampler, steps, text_guidance_strength,
                  reference_feature_strength, reference_guidance_strength, step_to_launch_face_guidance, face_bbox_x1,
-                 face_bbox_y1, face_bbox_x2, face_bbox_y2, height, width, num_samples, mask=None):
+                 face_bbox_y1, face_bbox_x2, face_bbox_y2, height, width, num_samples):
 
+        # reference_faces = [image1[0], image2[0], image3[0], image4[0]]
         seed_everything(seed)
 
+        # reference_faces = detect_face(reference_faces)
+
+        # for i, ref_img in enumerate(reference_faces):
+        #     ref_img.save(f'./{i + 1}.png')
         print(f'detected {len(reference_faces)} faces')
         if len(reference_faces) == 0:
-            raise Exception('No face detected in the reference images, please upload images with clear face')
+            raise (
+                'No face detected in the reference images, please upload images with clear face'
+            )
 
         face_transforms = Compose(
             [T.ToTensor(),
              T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])])
 
-        lambda_feat_before_ref_guidance = 0.85  # Corrected variable name
+        lamda_feat_before_ref_guidence = 0.85
 
         # process the ref_imgs
         face_bbox = [face_bbox_x1, face_bbox_y1, face_bbox_x2, face_bbox_y2]
@@ -85,6 +84,13 @@ class FlashFaceGenerator:
             int(normalized_bbox[3] * H)
         ]
         max_size = max(face_bbox[2] - face_bbox[1], face_bbox[3] - face_bbox[1])
+        empty_mask = torch.zeros((H, W))
+
+        empty_mask[face_bbox[1]:face_bbox[1] + max_size,
+        face_bbox[0]:face_bbox[0] + max_size] = 1
+
+        empty_mask = empty_mask[::8, ::8].cuda()
+        empty_mask = empty_mask[None].repeat(num_samples, 1, 1)
 
         padding_to_square = PadToSquare(224)
         pasted_ref_faces = []
@@ -99,86 +105,40 @@ class FlashFaceGenerator:
 
         faces = torch.stack(pasted_ref_faces, dim=0).to('cuda')
 
-        # Process the mask if provided
-        if mask is not None:
-            mask_tensor = mask.float().cuda()
-            if mask_tensor.ndim == 2:  # Ensure mask tensor has 3 dimensions
-                mask_tensor = mask_tensor.unsqueeze(0)
-            mask_tensor = F.resize(mask_tensor, (H // 8, W // 8))
-            empty_mask = mask_tensor.repeat(num_samples, 1, 1)
-        else:
-            empty_mask = torch.ones((num_samples, H // 8, W // 8)).cuda()
-
         ref_z0 = cfg.ae_scale * torch.cat([
             vae.sample(u, deterministic=True)
             for u in faces.split(cfg.ae_batch_size)
         ])
+        model, diffusion = model
+        model.share_cache['num_pairs'] = len(faces)
+        model.share_cache['ref'] = ref_z0
+        model.share_cache['similarity'] = torch.tensor(reference_feature_strength).cuda()
+        model.share_cache['ori_similarity'] = torch.tensor(reference_feature_strength).cuda()
+        model.share_cache['lamda_feat_before_ref_guidance'] = torch.tensor(lamda_feat_before_ref_guidence).cuda()
+        model.share_cache['ref_context'] = negative.repeat(len(ref_z0), 1, 1)
+        model.share_cache['masks'] = empty_mask
+        model.share_cache['classifier'] = reference_guidance_strength
+        model.share_cache['step_to_launch_face_guidance'] = step_to_launch_face_guidance
 
-        # Check if the model contains the required attributes
-        if isinstance(model, tuple):
-            model, diffusion = model
+        diffusion.classifier = reference_guidance_strength
 
-        if not hasattr(model, 'share_cache'):
-            model.share_cache = {}
+        progress = 0.0
+        diffusion.progress = 0
 
-        if 'diffusion' in model.share_cache and 'generated_image' in model.share_cache:
-            diffusion = model.share_cache['diffusion']
-            initial_image = model.share_cache['generated_image'].to('cuda').float()
-            if mask is not None:
-                mask_tensor = mask.float().cuda()
-                mask_resized = F.resize(mask_tensor, initial_image.shape[-2:])
-                initial_image = initial_image * (1 - mask_resized) + mask_resized * initial_image
-            initial_image = initial_image.unsqueeze(0).repeat(num_samples, 1, 1, 1)
-        else:
-            model.share_cache['num_pairs'] = len(faces)
-            model.share_cache['ref'] = ref_z0
-            model.share_cache['similarity'] = torch.tensor(reference_feature_strength).cuda()
-            model.share_cache['ori_similarity'] = torch.tensor(reference_feature_strength).cuda()
-            model.share_cache['lamda_feat_before_ref_guidance'] = torch.tensor(lambda_feat_before_ref_guidance).cuda()
-            model.share_cache['ref_context'] = negative.repeat(len(ref_z0), 1, 1)
-            model.share_cache['masks'] = empty_mask
-            model.share_cache['classifier'] = reference_guidance_strength
-            model.share_cache['step_to_launch_face_guidance'] = step_to_launch_face_guidance
+        positive = positive[None].repeat(num_samples, 1, 1, 1).flatten(0, 1)
+        positive = {'context': positive}
 
-            diffusion.classifier = reference_guidance_strength
-
-            progress = 0.0
-            diffusion.progress = 0
-
-            positive = positive[None].repeat(num_samples, 1, 1, 1).flatten(0, 1)
-            positive = {'context': positive}
-
-            negative = {
-                'context': negative[None].repeat(num_samples, 1, 1, 1).flatten(0, 1)
-            }
-
-            # Check if model contains an image and blend it with the mask
-            if 'image' in model.share_cache:
-                initial_image = model.share_cache['image']
-                initial_image = initial_image.to('cuda').float()
-                if mask is not None:
-                    mask_resized = F.resize(mask_tensor, initial_image.shape[-2:])
-                    initial_image = initial_image * (1 - mask_resized) + mask_resized * initial_image
-                initial_image = initial_image.unsqueeze(0).repeat(num_samples, 1, 1, 1)
-            else:
-                initial_image = torch.empty(num_samples, 4, H // 8, W // 8, device='cuda').normal_()
-
-        # Ensure the model has the attribute 'load_device'
-        if not hasattr(model, 'load_device'):
-            model.load_device = lambda *args, **kwargs: None
-
-        # Ensure the model has the attribute 'model'
-        if not hasattr(model, 'model'):
-            model.model = model
-
-        # Ensure the model has the attribute 'latent_format'
-        if not hasattr(model, 'latent_format'):
-            model.latent_format = None
-
+        negative = {
+            'context': negative[None].repeat(num_samples, 1, 1, 1).flatten(0, 1)
+        }
         # sample
         with amp.autocast(dtype=cfg.flash_dtype), torch.no_grad():
             z0 = diffusion.sample(solver=sampler,
-                                  noise=initial_image,
+                                  noise=torch.empty(num_samples,
+                                                    4,
+                                                    H // 8,
+                                                    W // 8,
+                                                    device='cuda').normal_(),
                                   model=model,
                                   model_kwargs=[positive, negative],
                                   steps=steps,
@@ -188,13 +148,18 @@ class FlashFaceGenerator:
                                   discretization=cfg.discretization)
 
         imgs = vae.decode(z0 / cfg.ae_scale)
-
+        del model.share_cache['ori_similarity']
         # output
         imgs = (imgs.permute(0, 2, 3, 1) * 127.5 + 127.5).cpu().numpy().clip(
             0, 255).astype(np.uint8)
 
         # convert to PIL image
         imgs_pil = [Image.fromarray(img) for img in imgs]
+        imgs_pil = imgs_pil + show_refs
+
+        # save imgs to file
+        # for i, img in enumerate(imgs):
+        #     img.save(f"sample_{i}.png")
 
         torch_imgs = []
         for img in imgs_pil:
@@ -202,11 +167,6 @@ class FlashFaceGenerator:
             # Ensure the data type is correct
             img_np = img_tensor.permute(1, 2, 0).unsqueeze(0)
             torch_imgs.append(img_np)
-        torch_imgs = torch.cat(torch_imgs, dim=0)
+        torch_imgs = torch.cat(torch_imgs, dim=0, )
 
-        # Store the generated image and diffusion in the model's share cache
-        model.share_cache['generated_image'] = torch_imgs
-        model.share_cache['diffusion'] = diffusion
-
-        # Return the model and the image
-        return model, torch_imgs
+        return (torch_imgs,)

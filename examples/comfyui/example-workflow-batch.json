@@ -1,0 +1,712 @@
+{
+  "last_node_id": 43,
+  "last_link_id": 77,
+  "nodes": [
+    {
+      "id": 38,
+      "type": "FlashFaceLoadModel",
+      "pos": [
+        49,
+        336
+      ],
+      "size": {
+        "0": 315,
+        "1": 98
+      },
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            63
+          ],
+          "shape": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            65,
+            66
+          ],
+          "shape": 3,
+          "slot_index": 1
+        },
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            64
+          ],
+          "shape": 3,
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "FlashFaceLoadModel"
+      },
+      "widgets_values": [
+        "flashface.ckpt"
+      ]
+    },
+    {
+      "id": 40,
+      "type": "FlashFaceCLIPTextEncode",
+      "pos": [
+        492,
+        507
+      ],
+      "size": {
+        "0": 400,
+        "1": 200
+      },
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 66
+        }
+      ],
+      "outputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "links": [
+            68
+          ],
+          "shape": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "FlashFaceCLIPTextEncode"
+      },
+      "widgets_values": [
+        "",
+        "Append Negative Base Prompt"
+      ]
+    },
+    {
+      "id": 39,
+      "type": "FlashFaceCLIPTextEncode",
+      "pos": [
+        489,
+        219
+      ],
+      "size": {
+        "0": 400,
+        "1": 200
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 65
+        }
+      ],
+      "outputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "links": [
+            67
+          ],
+          "shape": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "FlashFaceCLIPTextEncode"
+      },
+      "widgets_values": [
+        "a beautiful woman in a sundress in outer space",
+        "Append Positive Base Prompt"
+      ]
+    },
+    {
+      "id": 34,
+      "type": "FlashFaceGenerator",
+      "pos": [
+        945,
+        217
+      ],
+      "size": {
+        "0": 315,
+        "1": 474
+      },
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 63
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 67
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 68
+        },
+        {
+          "name": "reference_faces",
+          "type": "PIL_IMAGE",
+          "link": 62
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 64
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            60
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "FlashFaceGenerator"
+      },
+      "widgets_values": [
+        543569755,
+        "randomize",
+        "euler",
+        35,
+        7.5,
+        1.2,
+        3.2,
+        750,
+        0.3,
+        0.2,
+        0.6,
+        0.5,
+        768,
+        768,
+        1
+      ]
+    },
+    {
+      "id": 10,
+      "type": "PreviewImage",
+      "pos": [
+        1419,
+        197
+      ],
+      "size": {
+        "0": 581.7857055664062,
+        "1": 684.9852905273438
+      },
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 60
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      }
+    },
+    {
+      "id": 5,
+      "type": "LoadImage",
+      "pos": [
+        -660,
+        -86
+      ],
+      "size": {
+        "0": 315,
+        "1": 314
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            71
+          ],
+          "shape": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "images (13).jpeg",
+        "image"
+      ]
+    },
+    {
+      "id": 4,
+      "type": "LoadImage",
+      "pos": [
+        -302,
+        -81
+      ],
+      "size": {
+        "0": 315,
+        "1": 314
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2,
+            70
+          ],
+          "shape": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "gettyimages-675901346nickiminaj-1573488799.jpg",
+        "image"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "LoadImage",
+      "pos": [
+        -302,
+        302
+      ],
+      "size": {
+        "0": 315,
+        "1": 314
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            3,
+            74
+          ],
+          "shape": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "GettyImages-485995546.webp",
+        "image"
+      ]
+    },
+    {
+      "id": 7,
+      "type": "LoadImage",
+      "pos": [
+        -662,
+        300
+      ],
+      "size": {
+        "0": 315,
+        "1": 314
+      },
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            73
+          ],
+          "shape": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "images (10).jpeg",
+        "image"
+      ]
+    },
+    {
+      "id": 41,
+      "type": "ImageBatch",
+      "pos": [
+        144,
+        -63
+      ],
+      "size": {
+        "0": 210,
+        "1": 46
+      },
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image1",
+          "type": "IMAGE",
+          "link": 70
+        },
+        {
+          "name": "image2",
+          "type": "IMAGE",
+          "link": 71
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            75
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageBatch"
+      }
+    },
+    {
+      "id": 42,
+      "type": "ImageBatch",
+      "pos": [
+        142,
+        67
+      ],
+      "size": {
+        "0": 210,
+        "1": 46
+      },
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image1",
+          "type": "IMAGE",
+          "link": 73
+        },
+        {
+          "name": "image2",
+          "type": "IMAGE",
+          "link": 74
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            76
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageBatch"
+      }
+    },
+    {
+      "id": 43,
+      "type": "ImageBatch",
+      "pos": [
+        406,
+        3
+      ],
+      "size": {
+        "0": 210,
+        "1": 46
+      },
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image1",
+          "type": "IMAGE",
+          "link": 75
+        },
+        {
+          "name": "image2",
+          "type": "IMAGE",
+          "link": 76
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            77
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageBatch"
+      }
+    },
+    {
+      "id": 37,
+      "type": "FlashFaceDetectFace",
+      "pos": [
+        654,
+        -3
+      ],
+      "size": {
+        "0": 210,
+        "1": 46
+      },
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 77
+        }
+      ],
+      "outputs": [
+        {
+          "name": "PIL_IMAGE",
+          "type": "PIL_IMAGE",
+          "links": [
+            62
+          ],
+          "shape": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "FlashFaceDetectFace"
+      }
+    }
+  ],
+  "links": [
+    [
+      2,
+      4,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      6,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      60,
+      34,
+      0,
+      10,
+      0,
+      "IMAGE"
+    ],
+    [
+      62,
+      37,
+      0,
+      34,
+      3,
+      "PIL_IMAGE"
+    ],
+    [
+      63,
+      38,
+      0,
+      34,
+      0,
+      "MODEL"
+    ],
+    [
+      64,
+      38,
+      2,
+      34,
+      4,
+      "VAE"
+    ],
+    [
+      65,
+      38,
+      1,
+      39,
+      0,
+      "CLIP"
+    ],
+    [
+      66,
+      38,
+      1,
+      40,
+      0,
+      "CLIP"
+    ],
+    [
+      67,
+      39,
+      0,
+      34,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      68,
+      40,
+      0,
+      34,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      70,
+      4,
+      0,
+      41,
+      0,
+      "IMAGE"
+    ],
+    [
+      71,
+      5,
+      0,
+      41,
+      1,
+      "IMAGE"
+    ],
+    [
+      73,
+      7,
+      0,
+      42,
+      0,
+      "IMAGE"
+    ],
+    [
+      74,
+      6,
+      0,
+      42,
+      1,
+      "IMAGE"
+    ],
+    [
+      75,
+      41,
+      0,
+      43,
+      0,
+      "IMAGE"
+    ],
+    [
+      76,
+      42,
+      0,
+      43,
+      1,
+      "IMAGE"
+    ],
+    [
+      77,
+      43,
+      0,
+      37,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
