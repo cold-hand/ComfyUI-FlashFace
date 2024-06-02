@@ -11,10 +11,8 @@ from PIL import Image, ImageDraw
 
 from ..flashface.all_finetune.config import cfg
 from ..flashface.all_finetune.utils import Compose, PadToSquare, seed_everything, get_padding
-from ..ldm.models.retinaface import crop_face, retinaface
-
-import comfy.samplers
-
+from ..ldm.models.retinaface import  retinaface
+from ..ldm.ops.solvers import __all__ as solvers
 padding_to_square = PadToSquare(224)
 
 retinaface_transforms = T.Compose([PadToSquare(size=640), T.ToTensor()])
@@ -32,7 +30,7 @@ class FlashFaceGenerator:
                 "reference_faces": ("PIL_IMAGE", {}),
                 "vae": ("VAE", {}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647}),
-                "sampler": (['ddim', 'euler',], ),
+                "sampler": (['ddim', 'euler', 'euler_ancestral', 'dpm_2', 'dpm_2_ancestral',],),
                 "steps": ("INT", {"default": 35}),
                 "text_guidance_strength": ("FLOAT", {"default": 7.5, "min": 0.0, "max": 10.0, "step": 0.1}),
                 "reference_feature_strength": ("FLOAT", {"default": 1.2, "min": 0.7, "max": 1.4, "step": 0.05}),
