@@ -11,7 +11,14 @@ import random
 import torch
 
 from .schedules import karras_schedule, ve_to_vp, vp_to_ve
-from .solvers import sample_ddim, sample_euler, sample_euler_ancestral, sample_dpm_2, sample_dpm_2_ancestral
+from .solvers import (
+    sample_ddim,
+    sample_euler,
+    sample_euler_ancestral,
+    sample_dpm_2,
+    sample_dpm_2_ancestral,
+    sample_dpm_fast
+)
 
 __all__ = ['GaussianDiffusion']
 
@@ -149,7 +156,7 @@ class GaussianDiffusion(object):
         assert discard_penultimate_step in (None, True, False)
         assert return_intermediate in (None, 'x0', 'xt')
         # assert that solver is ddim
-        assert solver in ('ddim', 'euler', 'euler_ancestral', 'dpm_2', 'dpm_2_ancestral',)
+        assert solver in ('ddim', 'euler', 'euler_ancestral', 'dpm_2', 'dpm_2_ancestral', 'dpm_fast')
         # function of diffusion solver
         if solver == 'ddim':
             solver_fn = {'ddim': sample_ddim}[solver]
@@ -161,6 +168,8 @@ class GaussianDiffusion(object):
             solver_fn = {'dpm_2': sample_dpm_2}[solver]
         elif solver == 'dpm_2_ancestral':
             solver_fn = {'dpm_2_ancestral': sample_dpm_2_ancestral}[solver]
+        elif solver == 'dpm_fast':
+            solver_fn = {'dpm_fast': sample_dpm_fast}[solver]
 
         # options
         schedule = 'karras' if 'karras' in solver else None

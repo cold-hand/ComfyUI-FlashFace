@@ -5,8 +5,16 @@ from comfy.k_diffusion.sampling import sample_euler as comfy_sample_euler
 from comfy.k_diffusion.sampling import sample_euler_ancestral as comfy_sample_euler_ancestral
 from comfy.k_diffusion.sampling import sample_dpm_2 as comfy_sample_dpm_2
 from comfy.k_diffusion.sampling import sample_dpm_2_ancestral as comfy_sample_dpm_2_ancestral
+from comfy.k_diffusion.sampling import sample_dpm_fast as comfy_sample_dpm_fast
 
-__all__ = ['sample_ddim', 'sample_euler', 'sample_euler_ancestral', 'sample_dpm_2', 'sample_dpm_2_ancestral']
+__all__ = [
+    'sample_ddim',
+    'sample_euler',
+    'sample_euler_ancestral',
+    'sample_dpm_2',
+    'sample_dpm_2_ancestral',
+    'sample_dpm_fast'
+]
 
 
 @torch.no_grad()
@@ -50,5 +58,11 @@ def sample_dpm_2(noise, model, sigmas, show_progress=True):
 @torch.no_grad()
 def sample_dpm_2_ancestral(noise, model, sigmas, show_progress=True):
     noise = comfy_sample_dpm_2_ancestral(model, noise, sigmas, s_noise=.97, eta=1.8)
+
+    return noise
+
+@torch.no_grad()
+def sample_dpm_fast(noise, model, sigmas, show_progress=True):
+    noise = comfy_sample_dpm_fast(model, noise, sigmas, s_noise=.97, eta=1.8)
 
     return noise
