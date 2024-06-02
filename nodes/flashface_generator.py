@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 from ..flashface.all_finetune.config import cfg
 from ..flashface.all_finetune.utils import Compose, PadToSquare, seed_everything, get_padding
-from ..ldm.models.retinaface import crop_face, retinaface
+from ..ldm.models.retinaface import retinaface
 from ..ldm.ops.solvers import __all__ as solvers
 
 padding_to_square = PadToSquare(224)
