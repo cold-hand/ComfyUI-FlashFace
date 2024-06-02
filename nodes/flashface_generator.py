@@ -13,6 +13,7 @@ from ..flashface.all_finetune.config import cfg
 from ..flashface.all_finetune.utils import Compose, PadToSquare, seed_everything
 from ..ldm.models.retinaface import retinaface
 from ..ldm.ops.solvers import __all__ as solvers
+
 padding_to_square = PadToSquare(224)
 
 retinaface_transforms = T.Compose([PadToSquare(size=640), T.ToTensor()])
