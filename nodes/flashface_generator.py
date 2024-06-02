@@ -11,8 +11,9 @@ from PIL import Image, ImageDraw
 
 from ..flashface.all_finetune.config import cfg
 from ..flashface.all_finetune.utils import Compose, PadToSquare, seed_everything, get_padding
-from ..ldm.models.retinaface import retinaface
-from ..ldm.ops.solvers import __all__ as solvers
+from ..ldm.models.retinaface import crop_face, retinaface
+
+import comfy.samplers
 
 padding_to_square = PadToSquare(224)
 
@@ -31,7 +32,7 @@ class FlashFaceGenerator:
                 "reference_faces": ("PIL_IMAGE", {}),
                 "vae": ("VAE", {}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647}),
-                "sampler": (['ddim', 'euler', 'euler_ancestral', 'dpm_2', 'dpm_2_ancestral',],),
+                "sampler": (['ddim', 'euler',], ),
                 "steps": ("INT", {"default": 35}),
                 "text_guidance_strength": ("FLOAT", {"default": 7.5, "min": 0.0, "max": 10.0, "step": 0.1}),
                 "reference_feature_strength": ("FLOAT", {"default": 1.2, "min": 0.7, "max": 1.4, "step": 0.05}),
@@ -148,18 +149,6 @@ class FlashFaceGenerator:
         else:
             initial_image = torch.empty(num_samples, 4, H // 8, W // 8, device='cuda').normal_()
 
-        # Ensure the model has the attribute 'load_device'
-        if not hasattr(model, 'load_device'):
-            model.load_device = lambda *args, **kwargs: None
-
-        # Ensure the model has the attribute 'model'
-        if not hasattr(model, 'model'):
-            model.model = model
-
-        # Ensure the model has the attribute 'latent_format'
-        if not hasattr(model, 'latent_format'):
-            model.latent_format = None
-
         # sample
         with amp.autocast(dtype=cfg.flash_dtype), torch.no_grad():
             z0 = diffusion.sample(solver=sampler,
@@ -189,9 +178,8 @@ class FlashFaceGenerator:
             torch_imgs.append(img_np)
         torch_imgs = torch.cat(torch_imgs, dim=0)
 
-        # Store the generated image and diffusion in the model's share cache
+        # Store the generated image in the model's share cache
         model.share_cache['generated_image'] = torch_imgs
-        model.share_cache['diffusion'] = diffusion
 
-        # Return the model and the image
+        # Return the model and the image separately via share cache
         return model, torch_imgs
