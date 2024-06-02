@@ -63,6 +63,10 @@ def sample_dpm_2_ancestral(noise, model, sigmas, show_progress=True):
 
 @torch.no_grad()
 def sample_dpm_fast(noise, model, sigmas, show_progress=True):
-    noise = comfy_sample_dpm_fast(model, noise, sigmas, s_noise=.97, eta=1.8)
+    sigma_min = sigmas[-1]
+    if sigma_min == 0:
+        sigma_min = sigmas[-2]
+    total_steps = len(sigmas) - 1
+    noise = comfy_sample_dpm_fast(model, noise, sigma_min, sigmas[0],total_steps, s_noise=.97, eta=1.8)
 
     return noise
