@@ -114,54 +114,40 @@ class FlashFaceGenerator:
             for u in faces.split(cfg.ae_batch_size)
         ])
 
-        # Check if the model contains the required attributes
-        if isinstance(model, tuple):
-            model, diffusion = model
+        # Unpack model and diffusion
+        model, diffusion = model
+        model.share_cache['num_pairs'] = len(faces)
+        model.share_cache['ref'] = ref_z0
+        model.share_cache['similarity'] = torch.tensor(reference_feature_strength).cuda()
+        model.share_cache['ori_similarity'] = torch.tensor(reference_feature_strength).cuda()
+        model.share_cache['lamda_feat_before_ref_guidance'] = torch.tensor(lambda_feat_before_ref_guidance).cuda()
+        model.share_cache['ref_context'] = negative.repeat(len(ref_z0), 1, 1)
+        model.share_cache['masks'] = empty_mask
+        model.share_cache['classifier'] = reference_guidance_strength
+        model.share_cache['step_to_launch_face_guidance'] = step_to_launch_face_guidance
 
-        if not hasattr(model, 'share_cache'):
-            model.share_cache = {}
+        diffusion.classifier = reference_guidance_strength
 
-        if 'diffusion' in model.share_cache and 'generated_image' in model.share_cache:
-            diffusion = model.share_cache['diffusion']
-            initial_image = model.share_cache['generated_image'].to('cuda').float()
+        progress = 0.0
+        diffusion.progress = 0
+
+        positive = positive[None].repeat(num_samples, 1, 1, 1).flatten(0, 1)
+        positive = {'context': positive}
+
+        negative = {
+            'context': negative[None].repeat(num_samples, 1, 1, 1).flatten(0, 1)
+        }
+
+        # Check if model contains an image and blend it with the mask
+        if 'image' in model.share_cache:
+            initial_image = model.share_cache['image']
+            initial_image = initial_image.to('cuda').float()
             if mask is not None:
-                mask_tensor = mask.float().cuda()
                 mask_resized = F.resize(mask_tensor, initial_image.shape[-2:])
                 initial_image = initial_image * (1 - mask_resized) + mask_resized * initial_image
             initial_image = initial_image.unsqueeze(0).repeat(num_samples, 1, 1, 1)
         else:
-            model.share_cache['num_pairs'] = len(faces)
-            model.share_cache['ref'] = ref_z0
-            model.share_cache['similarity'] = torch.tensor(reference_feature_strength).cuda()
-            model.share_cache['ori_similarity'] = torch.tensor(reference_feature_strength).cuda()
-            model.share_cache['lamda_feat_before_ref_guidance'] = torch.tensor(lambda_feat_before_ref_guidance).cuda()
-            model.share_cache['ref_context'] = negative.repeat(len(ref_z0), 1, 1)
-            model.share_cache['masks'] = empty_mask
-            model.share_cache['classifier'] = reference_guidance_strength
-            model.share_cache['step_to_launch_face_guidance'] = step_to_launch_face_guidance
-
-            diffusion.classifier = reference_guidance_strength
-
-            progress = 0.0
-            diffusion.progress = 0
-
-            positive = positive[None].repeat(num_samples, 1, 1, 1).flatten(0, 1)
-            positive = {'context': positive}
-
-            negative = {
-                'context': negative[None].repeat(num_samples, 1, 1, 1).flatten(0, 1)
-            }
-
-            # Check if model contains an image and blend it with the mask
-            if 'image' in model.share_cache:
-                initial_image = model.share_cache['image']
-                initial_image = initial_image.to('cuda').float()
-                if mask is not None:
-                    mask_resized = F.resize(mask_tensor, initial_image.shape[-2:])
-                    initial_image = initial_image * (1 - mask_resized) + mask_resized * initial_image
-                initial_image = initial_image.unsqueeze(0).repeat(num_samples, 1, 1, 1)
-            else:
-                initial_image = torch.empty(num_samples, 4, H // 8, W // 8, device='cuda').normal_()
+            initial_image = torch.empty(num_samples, 4, H // 8, W // 8, device='cuda').normal_()
 
         # Ensure the model has the attribute 'load_device'
         if not hasattr(model, 'load_device'):
