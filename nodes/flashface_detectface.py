@@ -22,21 +22,18 @@ class FlashFaceDetectFace:
             },
         }
     RETURN_TYPES = ("PIL_IMAGE", "IMAGE")  # Updated RETURN_TYPES
-    INPUT_IS_LIST = True
     FUNCTION = "detect_face"
     CATEGORY = "FlashFace"
 
-    def detect_face(self, images):
+    def detect_face(self, **kwargs):
+        images = kwargs.get('images')
+        if not isinstance(images, torch.Tensor) or images.dim() != 4:
+            raise ValueError("Input should be a 4D tensor of images")
+        
         pil_imgs = []
         tensor_imgs = []
 
-        # if images are batched, separate them into individual images
-        if len(images) == 1 and len(images[0].shape) == 4:
-            images = images[0]
-
         for img in images:
-            if not isinstance(img, torch.Tensor):
-                raise ValueError("Input should be a list of PIL images")
             img = img.squeeze(0)
             img = img.permute(2, 0, 1)
             pil_image = F.to_pil_image(img)
