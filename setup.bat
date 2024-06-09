@@ -9,6 +9,7 @@ bitsadmin /transfer flashface_download https://huggingface.co/shilongz/FlashFace
 
 cd ..\vae
 bitsadmin /transfer vae_download https://huggingface.co/shilongz/FlashFace-SD1.5/resolve/main/sd-v1-vae.pth?download=true "%cd%\sd-v1-vae.pth"
+bitsadmin /transfer 15_vae_download https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors?download=true "%cd%\sd-v15-vae.safetensors"
 
 cd ..\clip
 bitsadmin /transfer clip_download1 https://huggingface.co/shilongz/FlashFace-SD1.5/resolve/main/openai-clip-vit-large-14.pth?download=true "%cd%\openai-clip-vit-large-14.pth"
