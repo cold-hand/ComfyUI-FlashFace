@@ -148,7 +148,7 @@ class FlashFaceGenerator:
         }
 
         latent_image = latent["samples"]
-        latent_image = latent_image.to('cuda').float()
+        latent_image = latent_image.normal_()
 
 
         # Check if model contains an image and blend it with the mask
@@ -165,7 +165,7 @@ class FlashFaceGenerator:
         # sample
         with amp.autocast(dtype=cfg.flash_dtype), torch.no_grad():
             z0 = diffusion.sample(solver=sampler,
-                                  noise=initial_image,
+                                  noise=latent_image,
                                   model=model,
                                   model_kwargs=[positive, negative],
                                   steps=steps,
