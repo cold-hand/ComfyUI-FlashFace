@@ -153,10 +153,10 @@ class FlashFaceGenerator:
 
         # Check if model contains an image and blend it with the mask
 
-        if mask is not None:
-            mask_resized = F.resize(mask_tensor, latent_image.shape[-2:])
-            latent_image = latent_image * (1 - mask_resized) + mask_resized * latent_image
-            latent_image = latent_image.unsqueeze(0).repeat(num_samples, 1, 1, 1)
+        # if mask is not None:
+        #     mask_resized = F.resize(mask_tensor, latent_image.shape[-2:])
+        #     latent_image = latent_image * (1 - mask_resized) + mask_resized * latent_image
+        #     latent_image = latent_image.unsqueeze(0).repeat(num_samples, 1, 1, 1)
 
         # sample
         with amp.autocast(dtype=cfg.flash_dtype), torch.no_grad():
