@@ -160,12 +160,12 @@ class FlashFaceGenerator:
         #         initial_image = initial_image * (1 - mask_resized) + mask_resized * initial_image
         #     initial_image = initial_image.unsqueeze(0).repeat(num_samples, 1, 1, 1)
         # else:
-        #     initial_image = torch.empty(num_samples, 4, H // 8, W // 8, device='cuda').normal_()
+        initial_image = torch.empty(num_samples, 4, H // 8, W // 8, device='cuda').normal_()
 
         # sample
         with amp.autocast(dtype=cfg.flash_dtype), torch.no_grad():
             z0 = diffusion.sample(solver=sampler,
-                                  noise=latent_image,
+                                  noise=initial_image,
                                   model=model,
                                   model_kwargs=[positive, negative],
                                   steps=steps,
