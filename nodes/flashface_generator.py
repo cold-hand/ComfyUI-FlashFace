@@ -29,6 +29,7 @@ class FlashFaceGenerator:
                 "positive": ("CONDITIONING", {}),
                 "negative": ("CONDITIONING", {}),
                 "reference_faces": ("PIL_IMAGE", {}),
+                "latent": ("LATENT", {}),
                 "vae": ("VAE", {}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2147483647}),
                 "sampler": (['ddim', 'euler', 'euler_ancestral', 'dpm_2', 'dpm_2_ancestral',],),
@@ -41,9 +42,9 @@ class FlashFaceGenerator:
                 "face_bbox_y1": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "face_bbox_x2": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "face_bbox_y2": ("FLOAT", {"default": 0.4, "min": 0.0, "max": 1.0, "step": 0.1}),
-                "height": ("INT", {"default": 768, "min": 8, "max": 16000}),
-                "width": ("INT", {"default": 768, "min": 8, "max": 16000}),
-                "num_samples": ("INT", {"default": 1}),
+                # "height": ("INT", {"default": 768, "min": 8, "max": 16000}),
+                # "width": ("INT", {"default": 768, "min": 8, "max": 16000}),
+                # "num_samples": ("INT", {"default": 1}),
             },
             "optional": {
                 "mask": ("MASK", {}),  # Make mask an optional input type
@@ -54,9 +55,13 @@ class FlashFaceGenerator:
     FUNCTION = "generate"
     CATEGORY = "FlashFace"
 
-    def generate(self, model, positive, negative, reference_faces, vae, seed, sampler, steps, text_guidance_strength,
+    def generate(self, model, positive, negative, reference_faces, latent, vae, seed, sampler, steps, text_guidance_strength,
                  reference_feature_strength, reference_guidance_strength, step_to_launch_face_guidance, face_bbox_x1,
-                 face_bbox_y1, face_bbox_x2, face_bbox_y2, height, width, num_samples, mask=None):
+                 face_bbox_y1, face_bbox_x2, face_bbox_y2, mask):
+
+        # get number of samples, height and width from the latent image
+        num_samples, _, height, width = latent["samples"].shape
+
 
         seed_everything(seed)
 
@@ -85,6 +90,21 @@ class FlashFaceGenerator:
         ]
         max_size = max(face_bbox[2] - face_bbox[1], face_bbox[3] - face_bbox[1])
 
+        if mask is not None:
+            mask_tensor = mask.float().cuda()
+            if mask_tensor.ndim == 2:  # Ensure mask tensor has 3 dimensions
+                mask_tensor = mask_tensor.unsqueeze(0)
+            mask_tensor = F.resize(mask_tensor, (H // 8, W // 8))
+            empty_mask = mask_tensor.repeat(num_samples, 1, 1)
+        else:
+            empty_mask = torch.zeros((H, W))
+
+            empty_mask[face_bbox[1]:face_bbox[1] + max_size,
+            face_bbox[0]:face_bbox[0] + max_size] = 1
+
+            empty_mask = empty_mask[::8, ::8].cuda()
+            empty_mask = empty_mask[None].repeat(num_samples, 1, 1)
+
         padding_to_square = PadToSquare(224)
         pasted_ref_faces = []
         show_refs = []
@@ -97,16 +117,6 @@ class FlashFaceGenerator:
             pasted_ref_faces.append(to_paste)
 
         faces = torch.stack(pasted_ref_faces, dim=0).to('cuda')
-
-        # Process the mask if provided
-        if mask is not None:
-            mask_tensor = mask.float().cuda()
-            if mask_tensor.ndim == 2:  # Ensure mask tensor has 3 dimensions
-                mask_tensor = mask_tensor.unsqueeze(0)
-            mask_tensor = F.resize(mask_tensor, (H // 8, W // 8))
-            empty_mask = mask_tensor.repeat(num_samples, 1, 1)
-        else:
-            empty_mask = torch.ones((num_samples, H // 8, W // 8)).cuda()
 
         ref_z0 = cfg.ae_scale * torch.cat([
             vae.sample(u, deterministic=True)
@@ -124,7 +134,6 @@ class FlashFaceGenerator:
         model.share_cache['masks'] = empty_mask
         model.share_cache['classifier'] = reference_guidance_strength
         model.share_cache['step_to_launch_face_guidance'] = step_to_launch_face_guidance
-
         diffusion.classifier = reference_guidance_strength
 
         progress = 0.0
@@ -137,21 +146,25 @@ class FlashFaceGenerator:
             'context': negative[None].repeat(num_samples, 1, 1, 1).flatten(0, 1)
         }
 
+        latent_image = latent["samples"]
+        latent_image = latent_image.to('cuda').float()
+
+
         # Check if model contains an image and blend it with the mask
-        if 'image' in model.share_cache:
-            initial_image = model.share_cache['image']
-            initial_image = initial_image.to('cuda').float()
-            if mask is not None:
-                mask_resized = F.resize(mask_tensor, initial_image.shape[-2:])
-                initial_image = initial_image * (1 - mask_resized) + mask_resized * initial_image
-            initial_image = initial_image.unsqueeze(0).repeat(num_samples, 1, 1, 1)
-        else:
-            initial_image = torch.empty(num_samples, 4, H // 8, W // 8, device='cuda').normal_()
+        # if 'image' in model.share_cache:
+        #     initial_image = model.share_cache['image']
+        #     initial_image = initial_image.to('cuda').float()
+        #     if mask is not None:
+        #         mask_resized = F.resize(mask_tensor, initial_image.shape[-2:])
+        #         initial_image = initial_image * (1 - mask_resized) + mask_resized * initial_image
+        #     initial_image = initial_image.unsqueeze(0).repeat(num_samples, 1, 1, 1)
+        # else:
+        #     initial_image = torch.empty(num_samples, 4, H // 8, W // 8, device='cuda').normal_()
 
         # sample
         with amp.autocast(dtype=cfg.flash_dtype), torch.no_grad():
             z0 = diffusion.sample(solver=sampler,
-                                  noise=initial_image,
+                                  noise=latent_image,
                                   model=model,
                                   model_kwargs=[positive, negative],
                                   steps=steps,
