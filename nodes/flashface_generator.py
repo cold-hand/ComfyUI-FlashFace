@@ -61,7 +61,8 @@ class FlashFaceGenerator:
 
         # get number of samples, height and width from the latent image
         num_samples, _, height, width = latent["samples"].shape
-
+        height = height * 8
+        width = width * 8
 
         seed_everything(seed)
 
