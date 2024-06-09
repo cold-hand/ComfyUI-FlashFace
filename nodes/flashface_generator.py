@@ -57,7 +57,7 @@ class FlashFaceGenerator:
 
     def generate(self, model, positive, negative, reference_faces, latent, vae, seed, sampler, steps, text_guidance_strength,
                  reference_feature_strength, reference_guidance_strength, step_to_launch_face_guidance, face_bbox_x1,
-                 face_bbox_y1, face_bbox_x2, face_bbox_y2, mask):
+                 face_bbox_y1, face_bbox_x2, face_bbox_y2, mask=None):
 
         # get number of samples, height and width from the latent image
         num_samples, _, height, width = latent["samples"].shape
