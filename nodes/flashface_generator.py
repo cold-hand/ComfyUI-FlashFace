@@ -148,7 +148,7 @@ class FlashFaceGenerator:
         }
 
         latent_image = latent["samples"]
-        latent_image = latent_image.to('cuda').normal_()
+        latent_image = latent_image.to('cuda')
 
 
         # Check if model contains an image and blend it with the mask
