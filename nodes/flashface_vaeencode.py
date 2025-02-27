@@ -36,13 +36,29 @@ class FlashFaceVAEEncode:
         
         # Use FlashFace VAE to encode
         with torch.no_grad():
+            # Encode the image using the VAE
             latent = vae.encode(x)
-        
-        # Format latent for compatibility
-        latent_result = {"samples": latent * cfg.ae_scale}
-        
-        # Add a noise_mask field to indicate this isn't an empty latent
-        latent_result["noise_mask"] = torch.ones((1, 1, latent.shape[2], latent.shape[3]), 
-                                                device=latent.device)
+            
+            # Ensure latent is a tensor
+            if not isinstance(latent, torch.Tensor):
+                # This might happen if vae.encode returns a dictionary or other object
+                print(f"WARNING: VAE encode returned {type(latent)}, trying to extract tensor")
+                # Try to get the tensor from whatever was returned
+                if hasattr(latent, 'sample'):
+                    latent = latent.sample
+                elif isinstance(latent, dict) and 'samples' in latent:
+                    latent = latent['samples']
+                else:
+                    raise ValueError(f"Unable to extract tensor from VAE encode result: {type(latent)}")
+            
+            # Scale the latent
+            scaled_latent = latent * float(cfg.ae_scale)
+            
+            # Format latent for compatibility
+            latent_result = {"samples": scaled_latent}
+            
+            # Add a noise_mask field to indicate this isn't an empty latent
+            latent_result["noise_mask"] = torch.ones((scaled_latent.shape[0], 1, scaled_latent.shape[2], scaled_latent.shape[3]), 
+                                                    device=scaled_latent.device)
         
         return (latent_result,) 

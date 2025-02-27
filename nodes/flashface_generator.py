@@ -20,6 +20,20 @@ retinaface_transforms = T.Compose([PadToSquare(size=640), T.ToTensor()])
 
 retinaface = retinaface(pretrained=True, device='cuda').eval().requires_grad_(False)
 
+def get_padding(width, height, max_dim=None):
+    if max_dim is None:
+        max_dim = max(width, height)
+    
+    h_padding = (max_dim - width) / 2
+    v_padding = (max_dim - height) / 2
+    
+    l_pad = int(h_padding)
+    t_pad = int(v_padding)
+    r_pad = int(h_padding + 0.5)
+    b_pad = int(v_padding + 0.5)
+    
+    return (l_pad, t_pad, r_pad, b_pad)
+
 class FlashFaceGenerator:
     @classmethod
     def INPUT_TYPES(cls):
@@ -38,6 +52,7 @@ class FlashFaceGenerator:
                 "reference_feature_strength": ("FLOAT", {"default": 1.2, "min": 0.7, "max": 1.4, "step": 0.05}),
                 "reference_guidance_strength": ("FLOAT", {"default": 3.2, "min": 1.8, "max": 4.0, "step": 0.1}),
                 "step_to_launch_face_guidance": ("INT", {"default": 750, "min": 0, "max": 1000, "step": 50}),
+                "auto_detect_face": ("BOOLEAN", {"default": False}),
                 "face_bbox_x1": ("FLOAT", {"default": 0.3, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "face_bbox_y1": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "face_bbox_x2": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 1.0, "step": 0.1}),
@@ -56,8 +71,8 @@ class FlashFaceGenerator:
     CATEGORY = "FlashFace"
 
     def generate(self, model, positive, negative, reference_faces, latent, vae, seed, sampler, steps, text_guidance_strength,
-                 reference_feature_strength, reference_guidance_strength, step_to_launch_face_guidance, face_bbox_x1,
-                 face_bbox_y1, face_bbox_x2, face_bbox_y2, mask=None):
+                 reference_feature_strength, reference_guidance_strength, step_to_launch_face_guidance, auto_detect_face,
+                 face_bbox_x1, face_bbox_y1, face_bbox_x2, face_bbox_y2, mask=None):
 
         # get number of samples, height and width from the latent image
         num_samples, _, height, width = latent["samples"].shape
@@ -74,9 +89,70 @@ class FlashFaceGenerator:
             [T.ToTensor(),
              T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])])
 
-        lambda_feat_before_ref_guidance = 0.85  # Corrected variable name
+        lambda_feat_before_ref_guidance = 0.85
 
-        # process the ref_imgs
+        # If auto_detect_face is enabled, we need to decode the latent to get the source image
+        if auto_detect_face:
+            print("Using latent for automatic face detection")
+            
+            try:
+                # Check if this is a ComfyUI VAE encoded latent or from FlashFace VAE
+                with torch.no_grad():
+                    # Use the FlashFace VAE for decoding (the one passed to this node)
+                    latent_for_detection = latent["samples"].to('cuda')
+                    
+                    # Attempt to decode with FlashFace VAE
+                    try:
+                        # Only normalize empty latents
+                        if "noise_mask" not in latent:
+                            latent_for_detection_copy = latent_for_detection.clone()
+                            # This is needed for empty latents
+                            latent_for_detection_copy = latent_for_detection_copy.normal_()
+                            decoded_images = vae.decode(latent_for_detection_copy / cfg.ae_scale)
+                        else:
+                            # For pre-encoded latents
+                            decoded_images = vae.decode(latent_for_detection / cfg.ae_scale)
+                            
+                        # Convert to PIL for face detection
+                        source_img = (decoded_images[0].permute(1, 2, 0) * 127.5 + 127.5).cpu().numpy().clip(0, 255).astype(np.uint8)
+                        source_pil = Image.fromarray(source_img)
+                        
+                        # Apply RetinaFace detection
+                        img_tensor = retinaface_transforms(source_pil).unsqueeze(0).to('cuda')
+                        boxes, kpts = retinaface.detect(img_tensor, min_thr=0.6)
+                        
+                        if len(boxes[0]) > 0:
+                            # Get the first detected face
+                            scale = 640 / max(source_pil.size)
+                            left, top, _, _ = get_padding(round(scale * source_pil.width),
+                                                        round(scale * source_pil.height), 640)
+                            
+                            # Adjust bounding box coordinates
+                            box = boxes[0][0].clone()
+                            box[0] -= left
+                            box[2] -= left
+                            box[1] -= top
+                            box[3] -= top
+                            
+                            box[:4] /= scale
+                            
+                            # Convert to normalized coordinates (0-1)
+                            face_bbox_x1 = float(box[0] / source_pil.width)
+                            face_bbox_y1 = float(box[1] / source_pil.height)
+                            face_bbox_x2 = float(box[2] / source_pil.width)
+                            face_bbox_y2 = float(box[3] / source_pil.height)
+                            
+                            print(f"Detected face at: [{face_bbox_x1:.2f}, {face_bbox_y1:.2f}, {face_bbox_x2:.2f}, {face_bbox_y2:.2f}]")
+                        else:
+                            print("No face detected in source image, using default bbox parameters")
+                    except Exception as e:
+                        print(f"Error decoding latent with FlashFace VAE: {e}")
+                        print("Falling back to manual bbox parameters")
+            except Exception as e:
+                print(f"Error during face detection: {e}")
+                print("Falling back to manual bbox parameters")
+
+        # Process the face_bbox
         face_bbox = [face_bbox_x1, face_bbox_y1, face_bbox_x2, face_bbox_y2]
         H = height
         W = width
