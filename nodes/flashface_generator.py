@@ -1,5 +1,6 @@
 import copy
 import random
+import gc
 
 import numpy as np
 import torch
@@ -53,7 +54,7 @@ class FlashFaceGenerator:
                 "reference_guidance_strength": ("FLOAT", {"default": 3.2, "min": 1.8, "max": 4.0, "step": 0.1}),
                 "step_to_launch_face_guidance": ("INT", {"default": 750, "min": 0, "max": 1000, "step": 50}),
                 "auto_detect_face": ("BOOLEAN", {"default": False}),
-                "denoise_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "denoise_strength": ("FLOAT", {"default": 0.75, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "face_bbox_x1": ("FLOAT", {"default": 0.3, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "face_bbox_y1": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "face_bbox_x2": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 1.0, "step": 0.1}),
@@ -80,7 +81,9 @@ class FlashFaceGenerator:
         height = height * 8
         width = width * 8
 
+        # IMPORTANT: Properly set the seed before ANY random operations
         seed_everything(seed)
+        print(f"Using seed: {seed}")
 
         print(f'detected {len(reference_faces)} faces')
         if len(reference_faces) == 0:
@@ -227,53 +230,65 @@ class FlashFaceGenerator:
         latent_image = latent["samples"].to('cuda')
         has_noise_mask = "noise_mask" in latent
         
-        # Apply denoise strength for img2img operations
+        # CRITICAL FIX: Always create fresh noise based on the seed
+        # This ensures different seeds produce different results
+        torch.manual_seed(seed)  # Re-seed before noise generation
+        
         if has_noise_mask:
-            # This is an encoded image latent
+            # This is an encoded image latent (img2img mode)
             print(f"Using encoded image latent with denoise strength: {denoise_strength}")
-            # Calculate noise timestep based on denoise strength
+            print(f"Latent shape: {latent_image.shape}, range: {latent_image.min().item()} to {latent_image.max().item()}")
+            
+            # Calculate timestep based on denoise strength
             t_enc = int(steps * (1.0 - denoise_strength))
             print(f"Starting denoising from timestep {t_enc}/{steps}")
             
+            # CRITICAL FIX: Always generate new noise for each run
+            noise = torch.randn_like(latent_image)
+            print(f"Generated noise with range: {noise.min().item()} to {noise.max().item()}")
+            
             if t_enc < steps:
-                # Only add noise if denoising is not set to 0
-                noise = torch.randn_like(latent_image)
-                # Determine sigma based on timestep
+                # Add the right amount of noise for img2img
                 sigmas = diffusion.sigmas
                 sigma = sigmas[t_enc]
-                # Add scaled noise to the latent
+                print(f"Using sigma value: {sigma}")
+                
+                # Proper noise addition for img2img
                 noised_latent = latent_image + noise * sigma
-                # Set latent_image to the noised version
                 latent_image = noised_latent
-                # Adjust sampling steps based on denoise strength
                 steps_to_run = steps - t_enc
             else:
-                # Use the latent directly if denoise is 0
+                # Just use the original latent if denoise is 0
                 steps_to_run = steps
-            
+                
             print(f"Will run for {steps_to_run} steps")
         else:
-            # This is an empty latent - use normal noise
+            # This is an empty latent (txt2img mode)
             print("Using empty latent with full noise")
-            latent_image = latent_image.normal_()
+            # CRITICAL FIX: Use proper noise initialization
+            latent_image = torch.randn_like(latent_image)
             steps_to_run = steps
         
-        # Check if model contains an image and blend it with the mask
-        if mask is not None:
-            mask_resized = F.resize(mask_tensor, latent_image.shape[-2:])
-            latent_image = latent_image * (1 - mask_resized) + mask_resized * latent_image
+        # Set model to appropriate mode
+        model.eval()
 
-        # sample
+        # CRITICAL FIX: Force garbage collection before inference
+        torch.cuda.empty_cache()
+        gc.collect()
+        
+        # Sample with the diffusion model
         with amp.autocast(dtype=cfg.flash_dtype), torch.no_grad():
             z0 = diffusion.sample(solver=sampler,
-                                  noise=latent_image,
-                                  model=model,
-                                  model_kwargs=[positive, negative],
-                                  steps=steps_to_run,
-                                  guide_scale=text_guidance_strength,
-                                  guide_rescale=0.5,
-                                  show_progress=True,
-                                  discretization=cfg.discretization)
+                                noise=latent_image,  # Now properly seeded
+                                model=model,
+                                model_kwargs=[positive, negative],
+                                steps=steps_to_run,
+                                guide_scale=text_guidance_strength,
+                                guide_rescale=0.5,
+                                show_progress=True,
+                                discretization=cfg.discretization)
+            
+            print(f"Sampled latent shape: {z0.shape}, range: {z0.min().item()} to {z0.max().item()}")
 
         imgs = vae.decode(z0 / cfg.ae_scale)
 
