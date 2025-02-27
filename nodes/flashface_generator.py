@@ -53,6 +53,7 @@ class FlashFaceGenerator:
                 "reference_guidance_strength": ("FLOAT", {"default": 3.2, "min": 1.8, "max": 4.0, "step": 0.1}),
                 "step_to_launch_face_guidance": ("INT", {"default": 750, "min": 0, "max": 1000, "step": 50}),
                 "auto_detect_face": ("BOOLEAN", {"default": False}),
+                "denoise_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "face_bbox_x1": ("FLOAT", {"default": 0.3, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "face_bbox_y1": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "face_bbox_x2": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 1.0, "step": 0.1}),
@@ -72,7 +73,7 @@ class FlashFaceGenerator:
 
     def generate(self, model, positive, negative, reference_faces, latent, vae, seed, sampler, steps, text_guidance_strength,
                  reference_feature_strength, reference_guidance_strength, step_to_launch_face_guidance, auto_detect_face,
-                 face_bbox_x1, face_bbox_y1, face_bbox_x2, face_bbox_y2, mask=None):
+                 denoise_strength, face_bbox_x1, face_bbox_y1, face_bbox_x2, face_bbox_y2, mask=None):
 
         # get number of samples, height and width from the latent image
         num_samples, _, height, width = latent["samples"].shape
@@ -165,7 +166,7 @@ class FlashFaceGenerator:
             int(normalized_bbox[2] * W),
             int(normalized_bbox[3] * H)
         ]
-        max_size = max(face_bbox[2] - face_bbox[1], face_bbox[3] - face_bbox[1])
+        max_size = max(face_bbox[2] - face_bbox[0], face_bbox[3] - face_bbox[1])
 
         if mask is not None:
             mask_tensor = mask.float().cuda()
@@ -223,12 +224,41 @@ class FlashFaceGenerator:
             'context': negative[None].repeat(num_samples, 1, 1, 1).flatten(0, 1)
         }
 
-        latent_image = latent["samples"]
-        latent_image = latent_image.to('cuda').normal_()
-
-
+        latent_image = latent["samples"].to('cuda')
+        has_noise_mask = "noise_mask" in latent
+        
+        # Apply denoise strength for img2img operations
+        if has_noise_mask:
+            # This is an encoded image latent
+            print(f"Using encoded image latent with denoise strength: {denoise_strength}")
+            # Calculate noise timestep based on denoise strength
+            t_enc = int(steps * (1.0 - denoise_strength))
+            print(f"Starting denoising from timestep {t_enc}/{steps}")
+            
+            if t_enc < steps:
+                # Only add noise if denoising is not set to 0
+                noise = torch.randn_like(latent_image)
+                # Determine sigma based on timestep
+                sigmas = diffusion.sigmas
+                sigma = sigmas[t_enc]
+                # Add scaled noise to the latent
+                noised_latent = latent_image + noise * sigma
+                # Set latent_image to the noised version
+                latent_image = noised_latent
+                # Adjust sampling steps based on denoise strength
+                steps_to_run = steps - t_enc
+            else:
+                # Use the latent directly if denoise is 0
+                steps_to_run = steps
+            
+            print(f"Will run for {steps_to_run} steps")
+        else:
+            # This is an empty latent - use normal noise
+            print("Using empty latent with full noise")
+            latent_image = latent_image.normal_()
+            steps_to_run = steps
+        
         # Check if model contains an image and blend it with the mask
-
         if mask is not None:
             mask_resized = F.resize(mask_tensor, latent_image.shape[-2:])
             latent_image = latent_image * (1 - mask_resized) + mask_resized * latent_image
@@ -239,7 +269,7 @@ class FlashFaceGenerator:
                                   noise=latent_image,
                                   model=model,
                                   model_kwargs=[positive, negative],
-                                  steps=steps,
+                                  steps=steps_to_run,
                                   guide_scale=text_guidance_strength,
                                   guide_rescale=0.5,
                                   show_progress=True,
