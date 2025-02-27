@@ -39,8 +39,16 @@ class FlashFaceVAEEncode:
             # Encode the image using the VAE
             latent = vae.encode(x)
             
-            # Ensure latent is a tensor
-            if not isinstance(latent, torch.Tensor):
+            # Debug print
+            print(f"VAE encode returned type: {type(latent)}")
+            
+            # Handle different return types
+            if isinstance(latent, tuple):
+                # Extract the first element from the tuple (usually the actual latent)
+                print(f"Tuple length: {len(latent)}")
+                latent = latent[0]  # Most VAEs return the latent as the first element
+                print(f"Using first element of tuple: {type(latent)}")
+            elif not isinstance(latent, torch.Tensor):
                 # This might happen if vae.encode returns a dictionary or other object
                 print(f"WARNING: VAE encode returned {type(latent)}, trying to extract tensor")
                 # Try to get the tensor from whatever was returned
@@ -51,6 +59,10 @@ class FlashFaceVAEEncode:
                 else:
                     raise ValueError(f"Unable to extract tensor from VAE encode result: {type(latent)}")
             
+            # Make sure we have a tensor at this point
+            if not isinstance(latent, torch.Tensor):
+                raise ValueError(f"Failed to convert VAE encode result to tensor: {type(latent)}")
+                
             # Scale the latent
             scaled_latent = latent * float(cfg.ae_scale)
             
